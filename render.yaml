@@ -1,0 +1,14 @@
+# Render Blueprint: AgentGuard as a single Docker web service.
+# The Dockerfile builds the React frontend and serves it from the
+# Python/FastAPI backend on one port.
+services:
+  - type: web
+    name: agentguard
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
