@@ -3,7 +3,7 @@
 # Python/FastAPI backend on one port.
 services:
   - type: web
-    name: agentguard
+    name: agentguard-app
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
