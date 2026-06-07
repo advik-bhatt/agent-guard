@@ -23,3 +23,8 @@ frontend/dist/
 # logs / os
 *.log
 .DS_Store
+
+# python
+__pycache__/
+*.pyc
+.venv/

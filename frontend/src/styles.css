@@ -169,3 +169,11 @@ h1 { margin: 0; font-size: clamp(40px, 6.2vw, 70px); font-weight: 700; line-heig
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; }
+
+.attack-input {
+  width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 12px 14px;
+  border-radius: 10px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.02);
+  color: var(--text); font-family: var(--mono); font-size: 12.5px; line-height: 1.55; resize: vertical;
+}
+.attack-input:focus { outline: none; border-color: var(--signal); }
+.attack-input::placeholder { color: var(--dim); }

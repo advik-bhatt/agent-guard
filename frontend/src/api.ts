@@ -12,8 +12,9 @@ export interface StreamHandlers {
   onError: (message: string) => void;
 }
 
-export function streamGuard(handlers: StreamHandlers): () => void {
-  const es = new EventSource(`${BACKEND}/api/guard/demo`);
+export function streamGuard(handlers: StreamHandlers, ticket?: string): () => void {
+  const q = ticket && ticket.trim() ? `?ticket=${encodeURIComponent(ticket.trim())}` : "";
+  const es = new EventSource(`${BACKEND}/api/guard/demo${q}`);
   let done = false;
   es.onmessage = (ev) => {
     if (ev.data === "[DONE]") {

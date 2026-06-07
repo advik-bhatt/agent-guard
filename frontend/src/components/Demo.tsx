@@ -26,6 +26,7 @@ function Play() {
 
 export function Demo() {
   const [running, setRunning] = useState(false);
+  const [ticket, setTicket] = useState("");
   const [policy, setPolicy] = useState<Policy>();
   const [task, setTask] = useState<{ task: string; ticket: string }>();
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -62,11 +63,19 @@ export function Demo() {
       onEvent,
       onDone: () => { setRunning(false); setStatus(undefined); },
       onError: (m) => { setError(m); setRunning(false); },
-    });
+    }, ticket);
   }
 
   return (
     <div className="demo">
+      <textarea
+        className="attack-input"
+        value={ticket}
+        onChange={(e) => setTicket(e.target.value)}
+        disabled={running}
+        rows={3}
+        placeholder="Write your own attack: paste a support ticket with a hidden instruction (steal a key, wire money, run shell). Leave blank to use the default. The real agent decides what to do; AgentGuard enforces the policy."
+      />
       <div className="demo-bar">
         <button className="run-btn" onClick={run} disabled={running}>
           {running ? <span className="spinner" /> : <Play />} {running ? "Intercepting…" : "Run live attack"}
