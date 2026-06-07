@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { join } from "node:path";
 import { loadRepo, exportedSymbols } from "./context";
 
 const execFileAsync = promisify(execFile);
@@ -19,7 +20,6 @@ export interface Policy {
   filesScanned: number;
 }
 
-// Least-privilege classification, derived from the tool's name + role in code.
 const FORBIDDEN = /(exec|shell|spawn|eval|rm_|delete|drop|wipe|destroy|env|secret|credential|password|exfil|ssh|key)/i;
 const SENSITIVE = /(payment|pay_|wire|transfer|refund|charge|email|send|sms|http|fetch|post_|upload|webhook)/i;
 
@@ -31,31 +31,36 @@ function classify(name: string): ToolRule {
   return { tool: name, sensitivity: "safe", reason: "Read-only / informational" };
 }
 
-// Real Perseus pass (optional): `perseus` is a live code-context engine. When it's
-// installed (pip install perseus-ctx) we let it render context over the agent repo,
-// which is exactly its job ("supercharged grep" for agents). Falls back to the
-// built-in scanner so the demo always runs.
-async function tryPerseus(repoRoot: string): Promise<boolean> {
-  if (process.env.PERSEUS_ENABLED !== "true") return false;
+// Real Perseus pass: Perseus (the live code-context engine) renders the agent's
+// tool source via the @read directive in .perseus/context.md. We classify that
+// rendered context into a policy. Falls back to a direct scan if Perseus isn't
+// installed/enabled so the demo always runs.
+async function perseusRender(repoRoot: string): Promise<string> {
+  if (process.env.PERSEUS_ENABLED !== "true") return "";
   try {
-    await execFileAsync("perseus", ["--help"], { timeout: 8000, cwd: repoRoot });
-    return true;
+    const ctx = join(repoRoot, ".perseus", "context.md");
+    const { stdout } = await execFileAsync("perseus", ["render", ctx], { cwd: repoRoot, timeout: 12000 });
+    return stdout;
   } catch {
-    return false;
+    return "";
   }
 }
 
 export async function derivePolicy(repoRoot: string, agent: string, budgetUsd: number): Promise<Policy> {
   const files = loadRepo(repoRoot);
-  const toolFile = files.find((f) => /tools?\.(ts|js|py)$/i.test(f.path)) ?? files[0];
-  const names = toolFile ? exportedSymbols(toolFile.content) : [];
-  const derivedBy = (await tryPerseus(repoRoot)) ? "perseus" : "builtin";
-  return {
-    agent,
-    sourceRepo: repoRoot,
-    derivedBy,
-    tools: names.map(classify),
-    budgetUsd,
-    filesScanned: files.length,
-  };
+
+  let derivedBy: "perseus" | "builtin" = "builtin";
+  let sourceText = "";
+  const rendered = await perseusRender(repoRoot);
+  if (rendered && /export\s+(?:async\s+)?function/.test(rendered)) {
+    sourceText = rendered; // Perseus actually surfaced the code
+    derivedBy = "perseus";
+  }
+  if (!sourceText) {
+    const toolFile = files.find((f) => /tools?\.(ts|js|py)$/i.test(f.path)) ?? files[0];
+    sourceText = toolFile?.content ?? "";
+  }
+
+  const names = exportedSymbols(sourceText);
+  return { agent, sourceRepo: repoRoot, derivedBy, tools: names.map(classify), budgetUsd, filesScanned: files.length };
 }
