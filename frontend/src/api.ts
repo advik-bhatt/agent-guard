@@ -1,6 +1,7 @@
 // Empty string => same-origin (Replit single-port prod build). Unset => local dev.
-export const BACKEND =
-  (import.meta.env.VITE_BACKEND_URL as string | undefined) ?? "http://localhost:3001";
+export const BACKEND = import.meta.env.DEV
+  ? "http://localhost:3001"
+  : ((import.meta.env.VITE_BACKEND_URL as string | undefined) || "");
 export const EXPLORER =
   (import.meta.env.VITE_MANTLE_EXPLORER as string | undefined) ||
   "https://explorer.sepolia.mantle.xyz";
