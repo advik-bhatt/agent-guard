@@ -1,91 +1,98 @@
 # AgentGuard — the firewall & flight recorder for AI agents
 
-Companies are deploying autonomous agents that can **spend money, run code, and touch
-production**. In 2026, **88% of enterprises have already hit an agent security
-incident**, only 21% have runtime visibility, and the EU AI Act's tamper-proof
-agent-audit obligations hit enforcement **Aug 2, 2026**.
+AI agents now hold real keys. They can spend money, run code, and touch production.
+In 2026, 88% of enterprises have already hit an agent security incident, only 21% have
+runtime visibility, and the EU AI Act's tamper-proof agent-audit obligations reach
+enforcement on Aug 2, 2026. The most common failure is prompt injection: a hostile
+instruction hidden in the data an agent reads.
 
 **AgentGuard** sits in the agent's request path and:
 
-1. **Derives a least-privilege policy from the agent's own code** (via **Perseus**, a
-   live code-context engine) — safe read tools vs. money/secret/destructive tools.
-2. **Enforces every tool call inline** — it *blocks* unsafe actions before they run
-   (exfiltrate secrets, wire money over budget, `exec_shell`), not after the fact.
-3. **Writes a hash-chained, on-chain-anchored audit trail** that even *you* cannot
-   rewrite (non-repudiation is the one thing a SaaS dashboard structurally can't give).
+1. **Derives a least-privilege policy from the agent's own code.** Perseus (a code-context
+   engine) is imported in-process to read the agent's tools, which AgentGuard classifies
+   into safe reads, money-movers, and forbidden calls.
+2. **Enforces every tool call in real time.** Unsafe actions (reading secrets, wiring money
+   over budget, running shell) are blocked before they execute, then fed back to the agent.
+3. **Writes a hash-chained, on-chain-anchored audit trail** that cannot be quietly rewritten.
 
-> Not another observability dashboard (trusted, after-the-fact). AgentGuard is
-> in-path enforcement + a trustless, third-party-verifiable record.
+It is not another observability dashboard, which is trusted and after-the-fact. AgentGuard
+is in-path enforcement plus a third-party-verifiable record.
 
-## The demo (the wow)
+## Stack
 
-Click **Run live attack**. An autonomous support agent is told to handle a ticket —
-but the ticket body is **prompt-injected** to make it exfiltrate `STRIPE_SECRET_KEY`,
-wire **$5,000**, and run `rm -rf … | bash`. Watch AgentGuard:
+- **Backend:** Python + FastAPI, streaming over Server-Sent Events.
+- **Policy:** Perseus imported natively (`perseus.render_source`) to read the agent's code.
+- **Agent:** a real Claude tool-use loop (Anthropic API) that genuinely decides its actions
+  and is governed live. With no key it runs an input-driven heuristic agent so the flow
+  still works.
+- **Audit:** SHA-256 hash-chained ledger; EVM anchor (simulated by default, real with a key).
+- **Frontend:** React + Vite + Three.js.
 
-- derive the agent's policy from its code (Perseus),
-- **ALLOW** the benign reads and **BLOCK** the three malicious calls in real time,
-- seal the verdicts into a hash chain and **anchor the root on-chain** → click the
-  explorer link; the record is immutable.
+## Run locally
 
-Nothing is hard-coded: real LLM agent (AWS Bedrock / Anthropic), real policy derived
-from real code, deterministic in-path enforcement.
-
-## Quick start (zero config — runs in ~30s)
+Prereqs: Python 3.11+ and Node 20+.
 
 ```bash
-npm install         # installs backend + frontend
-npm run dev         # backend :3001 + frontend :5173
-# open http://localhost:5173 → "Run live attack"
+pip install -r backend/requirements.txt
+npm install && npm run build                      # builds the frontend into frontend/dist
+ANTHROPIC_API_KEY=sk-ant-... uvicorn backend.app:app --host 0.0.0.0 --port 3001
+# open http://localhost:3001
 ```
 
-With no API keys it runs a **mock agent** + **simulated anchor** so the full flow
-works offline. Add keys (below) to make it fully live.
+Set `ANTHROPIC_API_KEY` for the real, non-deterministic LLM agent. Without it the demo
+still runs (heuristic agent). For hot-reload during development, run the uvicorn command
+above and, in another terminal, `npm run dev` (Vite on :5173).
 
-## Make the sponsors real
+## Try it
 
-Copy `.env.example` → `.env` and fill in what you want:
+Open the page. Optionally type your own attack in the box (a support ticket with a hidden
+instruction to leak a key, wire money, or run shell), then run it. The agent decides what
+to do; AgentGuard enforces the policy and anchors the audit trail. Different inputs and
+different runs produce different agent behavior; the enforcement is what stays constant.
 
-| Capability | What it does | Turn it on |
-|---|---|---|
-| **Claude agent** | runs the governed agent | `ANTHROPIC_API_KEY` (or AWS Bedrock via `BEDROCK_ENABLED=true` + `AWS_*`). With no key it runs a built-in compromised-agent scenario, which keeps the block demo deterministic. |
-| **Perseus** | derives the policy from the agent's code (`perseus render`) | `pip install perseus-ctx` + `PERSEUS_ENABLED=true`. Falls back to the built-in scanner where Perseus isn't installed (e.g. hosted Node deploys). |
-| **On-chain anchor** | non-repudiable audit root | `CHAIN_MODE=live` + `ANCHOR_PRIVATE_KEY` (any EVM testnet); simulated otherwise. |
+## Deploy (Docker)
 
-Anthropic API works as a drop-in agent runtime if Bedrock isn't ready: set
-`ANTHROPIC_API_KEY`.
+A `Dockerfile` is included. It builds the frontend, installs the Python backend, and serves
+both on one port (`$PORT`).
 
-### Deploy (any Node host)
-Build `npm run build`, start `npm start`. The Express server serves the built
-frontend and the API on one port and binds `0.0.0.0:$PORT`, so it runs on Render,
-Railway, Fly, a plain VM, or a tunnel to localhost. The production build uses
-same-origin API calls, so no extra config is needed.
+- **Render:** New → Web Service → connect the repo → Render detects the Dockerfile and uses
+  the Docker runtime → Deploy. Add `ANTHROPIC_API_KEY` in the service environment for the
+  real agent. You get a stable public URL that updates on every push.
+- **Anywhere Docker runs:**
+  ```bash
+  docker build -t agentguard .
+  docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-ant-... agentguard
+  ```
+
+## How Perseus is used
+
+`fixtures/support-agent/.perseus/context.md` uses Perseus's `@read tools.ts` directive.
+`backend/perseus_policy.py` calls `perseus.render_source(...)` in-process to pull that
+source, then classifies each exported tool into the policy. When it runs, the policy panel
+shows the **Perseus** engine.
 
 ## Architecture
 
 ```
 backend/
-  policy.ts       derive least-privilege policy from the agent's code (Perseus layer)
-  context.ts      symbol-aware "supercharged grep" over the agent repo
-  agentRunner.ts  the agent under guard (Bedrock / Anthropic / mock)
-  guard.ts        in-path enforcement + hash-chained, tamper-evident ledger
-  anchor.ts       anchor the ledger root on-chain (live) or sim
-  index.ts        SSE orchestrator + serves the built frontend
-  db/             provider-neutral Postgres (DATABASE_URL) or in-memory fallback
-frontend/         live 3-panel UI (policy · enforcement · tamper-proof ledger)
+  perseus_policy.py  derive the policy from the agent's code (Perseus, in-process)
+  agent.py           the governed agent: real Claude tool-use loop, heuristic fallback
+  guard.py           in-path enforcement + hash-chained, tamper-evident ledger
+  anchor.py          anchor the ledger root on-chain (live) or simulated
+  app.py             FastAPI app: SSE endpoint + serves the built frontend
+frontend/            React + Vite + Three.js (landing page + live demo)
 fixtures/support-agent/  the example agent whose code the policy is derived from
 ```
 
 ## Why it's a company (not a feature)
 
-- **Business model:** metered **policy-enforcement API** (per guarded action) →
-  **compliance/audit seats** (the on-chain audit packet) → enterprise governance.
-- **Moat:** (1) **neutrality** — the guard must be independent of the agent-makers
-  (you won't trust an agent vendor to grade its own agents); (2) a **cross-platform
-  policy + incident dataset** that compounds; (3) **non-repudiable** anchoring an
-  incumbent dashboard can't replicate.
-- **Why now:** YC is funding this category (Alter, CodeIntegrity, Galini); a16z's
-  2026 thesis: the agent explosion is bottlenecked by *safe, reliable* infra; EU AI
-  Act Art. 12 enforcement lands Aug 2, 2026.
+- **Business model:** metered policy-enforcement API (per guarded action), then
+  compliance and audit (the on-chain audit packet), then enterprise governance.
+- **Moat:** neutrality (the trust arbiter has to be independent of the agent makers),
+  a cross-platform incident dataset that compounds, and a non-repudiable on-chain record
+  an incumbent dashboard cannot replicate.
+- **Why now:** YC is funding this category (Alter, CodeIntegrity, Galini); a16z's 2026
+  thesis is that the agent explosion is bottlenecked by safe, reliable infrastructure;
+  EU AI Act Art. 12 enforcement lands Aug 2, 2026.
 
 Built for the NYTW Intern Hackathon: Best Overall and Best Use of Perseus.
