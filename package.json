@@ -1,0 +1,36 @@
+{
+  "name": "agentwork",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentWork — trustless hiring, payment, and on-chain reputation for AI agents on Mantle (ERC-8004).",
+  "scripts": {
+    "postinstall": "npm --prefix frontend install",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.cjs --network mantleSepolia",
+    "register": "hardhat run scripts/registerAgents.cjs --network mantleSepolia",
+    "backend": "tsx watch backend/index.ts",
+    "frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run backend\" \"npm run frontend\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "tsx backend/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.4",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.1.0",
+    "hardhat": "^2.22.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
