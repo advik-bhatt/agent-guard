@@ -1,200 +1,112 @@
-import { useEffect, useRef, useState } from "react";
-import { BACKEND, EXPLORER, streamGuard } from "./api";
+import { Background } from "./three/Background";
+import { Demo } from "./components/Demo";
 
-interface ToolRule { tool: string; sensitivity: "safe" | "sensitive" | "forbidden"; reason: string; }
-interface Policy {
-  agent: string; sourceRepo: string; derivedBy: "perseus" | "builtin";
-  filesScanned: number; budgetUsd: number; tools: ToolRule[]; llm: string;
-}
-interface Decision {
-  seq: number; tool: string; verdict: "allow" | "block";
-  sensitivity: string; reason: string; args: Record<string, unknown>;
-  estCostUsd: number; rationale: string; hash: string; prevHash: string;
-}
-interface Summary { allowed: number; blocked: number; blockedSpendUsd: number; total: number; integrity: boolean; }
-interface Anchor { rootHash: string; txHash: string; explorerUrl: string; simulated: boolean; entries: number; }
+const REPO = "https://github.com/advik-bhatt/agent-work";
 
-const short = (h: string) => (h && h.startsWith("0x") && h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h);
+function Mark() {
+  return (
+    <svg width="30" height="33" viewBox="0 0 30 33" fill="none" aria-hidden="true">
+      <path d="M15 1.4 28 8.2v9.3c0 8-6.4 11.6-13 13.6C8.4 29.1 2 25.5 2 17.5V8.2z" stroke="url(#mg)" strokeWidth="1.5" />
+      <path d="M15 8.5v15.5M8.6 12.5 15 8.5l6.4 4" stroke="#00e5a0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="15" cy="20.5" r="1.7" fill="#00e5a0" />
+      <defs>
+        <linearGradient id="mg" x1="2" y1="1" x2="28" y2="31" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#00e5a0" />
+          <stop offset="1" stopColor="#0a7f5e" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
 
 export default function App() {
-  const [running, setRunning] = useState(false);
-  const [policy, setPolicy] = useState<Policy>();
-  const [task, setTask] = useState<{ task: string; ticket: string }>();
-  const [decisions, setDecisions] = useState<Decision[]>([]);
-  const [summary, setSummary] = useState<Summary>();
-  const [anchor, setAnchor] = useState<Anchor>();
-  const [status, setStatus] = useState<string>();
-  const [error, setError] = useState<string>();
-  const [health, setHealth] = useState<{ chainMode: string; llm: string }>();
-  const stop = useRef<null | (() => void)>(null);
-  const feedRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetch(`${BACKEND}/api/health`).then((r) => r.json()).then(setHealth).catch(() => {});
-    return () => stop.current?.();
-  }, []);
-  useEffect(() => { feedRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [decisions]);
-
-  function onEvent(e: any) {
-    switch (e.step) {
-      case "deriving": case "thinking": case "proposed": case "sealing": setStatus(e.message ?? null); break;
-      case "policy": setPolicy(e as Policy); break;
-      case "task": setTask({ task: e.task, ticket: e.ticket }); break;
-      case "decision": setDecisions((p) => [...p, e as Decision]); break;
-      case "summary": setSummary(e as Summary); setStatus(undefined); break;
-      case "anchored": setAnchor(e as Anchor); break;
-      case "error": setError(e.message); break;
-    }
-  }
-
-  function run() {
-    setRunning(true); setError(undefined); setPolicy(undefined); setTask(undefined);
-    setDecisions([]); setSummary(undefined); setAnchor(undefined); setStatus(undefined);
-    stop.current = streamGuard({
-      onEvent,
-      onDone: () => { setRunning(false); setStatus(undefined); },
-      onError: (m) => { setError(m); setRunning(false); },
-    });
-  }
-
   return (
-    <div className="app">
-      <header className="hero">
-        <div className="hero-top">
-          <div className="brand">
-            <div className="logo">🛡</div>
-            <div>
-              <h1>AgentGuard</h1>
-              <p className="tagline">The firewall &amp; flight recorder for AI agents</p>
-            </div>
+    <>
+      <Background />
+      <div className="page">
+        <nav className="nav">
+          <a className="brand" href="#top">
+            <Mark />
+            <span className="wordmark">AgentGuard</span>
+          </a>
+          <div className="nav-links">
+            <a href="#how">How it works</a>
+            <a href="#demo">Live demo</a>
+            <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
+            <a className="nav-cta" href="#demo">Run the demo</a>
           </div>
-          <div className="sponsors">
-            <span className="pill pill-live">live</span>
-            <span className="pill">Claude</span>
-            <span className="pill">On-chain audit</span>
+        </nav>
+
+        <header className="hero" id="top">
+          <div className="eyebrow">Runtime security for autonomous agents</div>
+          <h1>
+            Ship AI agents that can act.<br />
+            Without giving away the keys.
+          </h1>
+          <p className="sub">
+            AgentGuard derives a least-privilege policy from your agent's own code, blocks unsafe
+            tool calls in the request path before they run, and writes a tamper-proof, on-chain audit
+            trail you can prove to an auditor.
+          </p>
+          <div className="hero-cta">
+            <a className="btn btn-primary" href="#demo">See it stop a live attack</a>
+            <a className="btn btn-ghost" href={REPO} target="_blank" rel="noreferrer">View the code</a>
           </div>
-        </div>
+          <div className="hero-note">The category YC and a16z are funding. AgentGuard is the firewall and flight recorder for AI agents.</div>
+        </header>
 
-        <p className="pitch">
-          Companies are deploying autonomous agents that can spend money, run code, and touch
-          production, and <b>88% have already hit an agent incident</b>. AgentGuard reads the agent's
-          <b> own code</b> to derive a least-privilege policy, <b>blocks unsafe tool calls in the
-          request path</b> before they run, and writes a <b>tamper-proof, on-chain-anchored</b> audit
-          trail that cannot be quietly rewritten.
-        </p>
-
-        <div className="controls">
-          <button className="run-btn" onClick={run} disabled={running}>
-            {running ? <span className="spinner" /> : "▶"} {running ? "Running…" : "Run live attack"}
-          </button>
-          {(health || policy) && (
-            <div className="mode-tags">
-              <span className="mode">agent: {policy?.llm ?? health?.llm}</span>
-              <span className="mode">chain: {health?.chainMode}</span>
-            </div>
-          )}
-          {status && <span className="status-line">{status}</span>}
-        </div>
-        {error && <div className="error-banner">⚠ {error}</div>}
-      </header>
-
-      <main className="guard-grid">
-        {/* LEFT: policy + ledger */}
-        <div className="col">
-          <section className="card">
-            <div className="card-title">
-              <span>Agent &amp; derived policy</span>
-              {policy && <span className={`badge ${policy.derivedBy === "perseus" ? "badge-mantle" : "badge-amber"}`}>{policy.derivedBy === "perseus" ? "Perseus" : "built-in"} engine</span>}
-            </div>
-            <div className="identity-id">{policy?.agent ?? "—"}</div>
-            <div className="identity-wallet muted">
-              {policy ? `${policy.sourceRepo} · ${policy.filesScanned} files · budget $${policy.budgetUsd}` : "policy derived from the agent's source"}
-            </div>
-            <div className="tool-list">
-              {(policy?.tools ?? []).map((t) => (
-                <div key={t.tool} className="tool-row">
-                  <span className={`sev sev-${t.sensitivity}`}>{t.sensitivity}</span>
-                  <span className="tool-name">{t.tool}</span>
-                </div>
-              ))}
-              {!policy && <div className="muted">Run the demo to derive the policy.</div>}
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="card-title">
-              <span>Tamper-proof ledger</span>
-              {summary && <span className={`badge ${summary.integrity ? "badge-green" : "badge-live"}`}>{summary.integrity ? "integrity ✓" : "broken"}</span>}
-            </div>
-            <div className="ledger">
-              {decisions.length === 0 && <div className="muted">Each verdict is hash-chained to the last.</div>}
-              {decisions.map((d) => (
-                <div key={d.seq} className="ledger-row">
-                  <span className="muted">#{d.seq}</span>
-                  <span className={d.verdict === "allow" ? "ok" : "bad"}>{d.verdict === "allow" ? "✓" : "✗"}</span>
-                  <span className="hashmono">{short(d.hash)}</span>
-                </div>
-              ))}
-            </div>
-            {anchor && (
-              <div className="anchor">
-                <div className="payment-dot" />
-                <div>
-                  <div className="anchor-title">Anchored on-chain {anchor.simulated && <span className="tx-sim">sim</span>}</div>
-                  <a className="hashmono" href={anchor.explorerUrl} target="_blank" rel="noreferrer">{short(anchor.txHash)}</a>
-                  <div className="muted anchor-root">root {short(anchor.rootHash)} · {anchor.entries} entries · immutable</div>
-                </div>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* RIGHT: live enforcement (the star) */}
-        <section className="card enforce">
-          <div className="card-title">
-            <span>Live enforcement</span>
-            {running && <span className="badge badge-live">● live</span>}
+        <section className="band">
+          <div className="band-head">
+            <h2>Agents now hold the keys.</h2>
+            <p>The model got good enough to act. The controls did not ship with it.</p>
           </div>
-
-          {task && (
-            <div className="ticket">
-              <div className="ticket-task">Task: {task.task}</div>
-              <div className="ticket-warn">⚠ poisoned input (prompt injection):</div>
-              <pre className="ticket-body">{task.ticket}</pre>
-            </div>
-          )}
-
-          <div className="dec-feed">
-            {decisions.length === 0 && !task && (
-              <div className="muted dec-empty">Press <b>Run live attack</b> — watch a hijacked agent try to exfiltrate secrets, wire $5,000, and run shell, and get stopped in real time.</div>
-            )}
-            {decisions.map((d) => (
-              <div key={d.seq} className={`dec ${d.verdict === "allow" ? "dec-allow" : "dec-block"}`}>
-                <div className="dec-head">
-                  <span className="dec-verdict">{d.verdict === "allow" ? "ALLOW" : "BLOCK"}</span>
-                  <span className="dec-tool">{d.tool}({Object.values(d.args ?? {}).map(String).join(", ").slice(0, 60)})</span>
-                  {d.estCostUsd > 0 && <span className="dec-cost">${d.estCostUsd.toLocaleString()}</span>}
-                </div>
-                <div className="dec-reason">{d.reason}</div>
-                <div className="dec-rationale muted">agent said: “{d.rationale}”</div>
-              </div>
-            ))}
-            <div ref={feedRef} />
+          <div className="stats">
+            <div className="stat"><b>88%</b><span>of enterprises have already hit an agent security incident</span></div>
+            <div className="stat"><b>21%</b><span>have any runtime visibility into what their agents do</span></div>
+            <div className="stat"><b>Aug 2026</b><span>EU AI Act mandates tamper-proof agent audit trails</span></div>
           </div>
-
-          {summary && (
-            <div className="summary">
-              <div className="metric"><b className="bad">{summary.blocked}</b><span>blocked</span></div>
-              <div className="metric"><b className="ok">{summary.allowed}</b><span>allowed</span></div>
-              <div className="metric"><b className="bad">${summary.blockedSpendUsd.toLocaleString()}</b><span>spend stopped</span></div>
-            </div>
-          )}
+          <p className="band-foot">
+            The most common failure is prompt injection: a hostile instruction hidden in the data an
+            agent reads. The agent follows it as readily as a real one, and suddenly it is wiring
+            money or leaking secrets on your infrastructure.
+          </p>
         </section>
-      </main>
 
-      <footer className="foot muted">
-        AgentGuard · in-path enforcement + non-repudiable audit for autonomous agents
-      </footer>
-    </div>
+        <section className="how" id="how">
+          <div className="how-step">
+            <div className="step-no">01</div>
+            <h3>Derive policy from code</h3>
+            <p>AgentGuard reads the agent's source and classifies every tool it exposes: safe reads, money-movers, and forbidden calls like shell and secrets. The policy comes from the code, not a config someone forgot to update.</p>
+          </div>
+          <div className="how-step">
+            <div className="step-no">02</div>
+            <h3>Enforce in the request path</h3>
+            <p>Every tool call is intercepted before it executes and checked against that policy in real time. Safe actions pass. Forbidden calls and over-budget spend are blocked at the moment they are attempted.</p>
+          </div>
+          <div className="how-step">
+            <div className="step-no">03</div>
+            <h3>Prove it on-chain</h3>
+            <p>Every verdict is written to a hash-chained ledger, and the root is anchored on-chain. The result is a non-repudiable audit trail, the one guarantee a logging dashboard structurally cannot give.</p>
+          </div>
+        </section>
+
+        <section className="demo-section" id="demo">
+          <div className="band-head">
+            <h2>Watch it intercept a hijacked agent.</h2>
+            <p>A support agent is asked to resolve a ticket. The ticket is poisoned. Run it.</p>
+          </div>
+          <Demo />
+        </section>
+
+        <footer className="footer">
+          <div className="brand">
+            <Mark />
+            <span className="wordmark">AgentGuard</span>
+          </div>
+          <div className="footer-line">In-path enforcement and non-repudiable audit for the agent economy.</div>
+          <a href={REPO} target="_blank" rel="noreferrer">github.com/advik-bhatt/agent-work</a>
+        </footer>
+      </div>
+    </>
   );
 }
