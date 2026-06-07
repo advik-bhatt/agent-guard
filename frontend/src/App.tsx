@@ -1,223 +1,199 @@
 import { useEffect, useRef, useState } from "react";
-import { AgentIdentity } from "./components/AgentIdentity";
-import { TaskPanel } from "./components/TaskPanel";
-import { AgentStream } from "./components/AgentStream";
-import { ChainProof } from "./components/ChainProof";
-import { BACKEND, fetchTasks, streamDemo } from "./api";
-import type { Identity, LogEntry, Reputation, Status, TaskMeta, Tx, Verdict, WorkerResult } from "./types";
+import { BACKEND, EXPLORER, streamGuard } from "./api";
+
+interface ToolRule { tool: string; sensitivity: "safe" | "sensitive" | "forbidden"; reason: string; }
+interface Policy {
+  agent: string; sourceRepo: string; derivedBy: "perseus" | "builtin";
+  filesScanned: number; budgetUsd: number; tools: ToolRule[]; llm: string;
+}
+interface Decision {
+  seq: number; tool: string; verdict: "allow" | "block";
+  sensitivity: string; reason: string; args: Record<string, unknown>;
+  estCostUsd: number; rationale: string; hash: string; prevHash: string;
+}
+interface Summary { allowed: number; blocked: number; blockedSpendUsd: number; total: number; integrity: boolean; }
+interface Anchor { rootHash: string; txHash: string; explorerUrl: string; simulated: boolean; entries: number; }
+
+const short = (h: string) => (h && h.startsWith("0x") && h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h);
 
 export default function App() {
-  const [tasks, setTasks] = useState<TaskMeta[]>([]);
-  const [selected, setSelected] = useState<string>("strategy");
   const [running, setRunning] = useState(false);
-
-  const [identity, setIdentity] = useState<Identity>();
-  const [title, setTitle] = useState<string>();
-  const [description, setDescription] = useState<string>();
-  const [bounty, setBounty] = useState("0.05");
-  const [status, setStatus] = useState<Status>("Idle");
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [txs, setTxs] = useState<Tx[]>([]);
-  const [payment, setPayment] = useState<{ amount: string; url: string; simulated: boolean }>();
-  const [reputationUpdated, setReputationUpdated] = useState(false);
-  const [reputation, setReputation] = useState<Reputation>();
+  const [policy, setPolicy] = useState<Policy>();
+  const [task, setTask] = useState<{ task: string; ticket: string }>();
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [summary, setSummary] = useState<Summary>();
+  const [anchor, setAnchor] = useState<Anchor>();
+  const [status, setStatus] = useState<string>();
   const [error, setError] = useState<string>();
   const [health, setHealth] = useState<{ chainMode: string; llm: string }>();
-
-  const idRef = useRef(0);
-  const stopRef = useRef<null | (() => void)>(null);
+  const stop = useRef<null | (() => void)>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchTasks()
-      .then((t) => {
-        setTasks(t);
-        if (t[0]) setSelected(t[0].id);
-      })
-      .catch(() => setError("Could not reach the backend. Start it with `npm run dev`."));
-    fetch(`${BACKEND}/api/health`)
-      .then((r) => r.json())
-      .then(setHealth)
-      .catch(() => {});
-    return () => stopRef.current?.();
+    fetch(`${BACKEND}/api/health`).then((r) => r.json()).then(setHealth).catch(() => {});
+    return () => stop.current?.();
   }, []);
-
-  const pushLog = (entry: Omit<LogEntry, "id">) =>
-    setLog((prev) => [...prev, { id: idRef.current++, ...entry }]);
-  const addTx = (label: string, e: any) =>
-    setTxs((prev) => [...prev, { label, hash: e.txHash, url: e.explorerUrl, simulated: !!e.simulated }]);
+  useEffect(() => { feedRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [decisions]);
 
   function onEvent(e: any) {
-    switch (e.step as string) {
-      case "identity":
-        setIdentity(e as Identity);
-        setBounty(e.bounty);
-        break;
-      case "task":
-        setTitle(e.title);
-        setDescription(e.description);
-        setStatus("Idle");
-        break;
-      case "posting":
-        pushLog({ kind: "chain", text: e.message });
-        break;
-      case "posted":
-        setStatus("Open");
-        addTx("Task Posted", e);
-        pushLog({ kind: "chain", text: `Task #${e.taskId} posted · bounty ${e.bounty}` });
-        break;
-      case "claiming":
-        pushLog({ kind: "agent", text: e.message });
-        break;
-      case "claimed":
-        setStatus("Claimed");
-        addTx("Task Claimed", e);
-        pushLog({ kind: "chain", text: "ERC-8004 identity verified — task claimed" });
-        break;
-      case "working":
-        pushLog({ kind: "agent", text: e.message });
-        break;
-      case "worker_result":
-        pushLog({ kind: "worker", worker: e as WorkerResult });
-        break;
-      case "submitting":
-        pushLog({ kind: "agent", text: e.message });
-        break;
-      case "submitted":
-        setStatus("Submitted");
-        addTx("Work Submitted", e);
-        pushLog({ kind: "chain", text: "Work submitted on-chain" });
-        break;
-      case "verifying":
-        pushLog({ kind: "agent", text: e.message });
-        break;
-      case "verdict":
-        pushLog({ kind: "verdict", verdict: e as Verdict });
-        break;
-      case "paying":
-        pushLog({ kind: "pay", text: e.message });
-        break;
-      case "paid":
-        setStatus("Completed");
-        setPayment({ amount: e.amount, url: e.explorerUrl, simulated: !!e.simulated });
-        addTx("Payment Released", e);
-        pushLog({ kind: "pay", text: `Released ${e.amount} to the worker wallet` });
-        break;
-      case "held":
-        setStatus("Failed");
-        pushLog({ kind: "chain", text: e.message });
-        break;
-      case "reputation":
-        pushLog({ kind: "chain", text: e.message });
-        break;
-      case "reputation_updated":
-        setReputationUpdated(true);
-        addTx("Reputation Updated", e);
-        break;
-      case "reputation_summary":
-        setReputation({ count: e.count, avgScore: e.avgScore });
-        break;
-      case "error":
-        setError(e.message);
-        pushLog({ kind: "error", text: e.message });
-        break;
+    switch (e.step) {
+      case "deriving": case "thinking": case "proposed": case "sealing": setStatus(e.message ?? null); break;
+      case "policy": setPolicy(e as Policy); break;
+      case "task": setTask({ task: e.task, ticket: e.ticket }); break;
+      case "decision": setDecisions((p) => [...p, e as Decision]); break;
+      case "summary": setSummary(e as Summary); setStatus(undefined); break;
+      case "anchored": setAnchor(e as Anchor); break;
+      case "error": setError(e.message); break;
     }
   }
 
   function run() {
-    setRunning(true);
-    setError(undefined);
-    setLog([]);
-    setTxs([]);
-    setPayment(undefined);
-    setReputationUpdated(false);
-    setReputation(undefined);
-    setStatus("Idle");
-    setIdentity(undefined);
-    idRef.current = 0;
-    stopRef.current = streamDemo(selected, {
+    setRunning(true); setError(undefined); setPolicy(undefined); setTask(undefined);
+    setDecisions([]); setSummary(undefined); setAnchor(undefined); setStatus(undefined);
+    stop.current = streamGuard({
       onEvent,
-      onDone: () => setRunning(false),
-      onError: (m) => {
-        setError(m);
-        setRunning(false);
-      },
+      onDone: () => { setRunning(false); setStatus(undefined); },
+      onError: (m) => { setError(m); setRunning(false); },
     });
   }
-
-  const chainMode = identity?.chainMode ?? health?.chainMode;
-  const llm = identity?.llm ?? health?.llm;
 
   return (
     <div className="app">
       <header className="hero">
         <div className="hero-top">
           <div className="brand">
-            <div className="logo">◇</div>
+            <div className="logo">🛡</div>
             <div>
-              <h1>AgentWork</h1>
-              <p className="tagline">Trustless AI payroll &amp; on-chain reputation · Mantle ERC-8004</p>
+              <h1>AgentGuard</h1>
+              <p className="tagline">The firewall &amp; black box for AI agents</p>
             </div>
           </div>
           <div className="sponsors">
-            <span className="pill">Mantle · ERC-8004</span>
             <span className="pill">AWS Bedrock</span>
+            <span className="pill">Perseus</span>
             <span className="pill">Replit</span>
           </div>
         </div>
 
         <p className="pitch">
-          Every company will employ AI agents. Nobody has solved how to <b>pay them</b> or{" "}
-          <b>verify their work</b> without a human in the loop. AgentWork does: work gets done, a
-          second AI grades it, and payment + reputation settle on-chain — zero humans.
+          Companies are deploying autonomous agents that can spend money, run code, and touch
+          production — and <b>88% have already hit an agent incident</b>. AgentGuard derives a
+          least-privilege policy from the agent's <b>own code</b> (via Perseus), <b>blocks unsafe tool
+          calls in the request path</b>, and writes a <b>tamper-proof, on-chain-anchored</b> audit
+          trail — the one record even you can't rewrite.
         </p>
 
         <div className="controls">
-          <select
-            className="task-select"
-            value={selected}
-            disabled={running || tasks.length === 0}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.expectPass ? "✓" : "⚠"} {t.title}
-              </option>
-            ))}
-          </select>
-          <button className="run-btn" onClick={run} disabled={running || tasks.length === 0}>
-            {running ? <span className="spinner" /> : "▶"} {running ? "Running…" : "Run Demo"}
+          <button className="run-btn" onClick={run} disabled={running}>
+            {running ? <span className="spinner" /> : "▶"} {running ? "Running…" : "Run live attack"}
           </button>
-          {(chainMode || llm) && (
+          {(health || policy) && (
             <div className="mode-tags">
-              {chainMode && (
-                <span className={`mode ${chainMode === "live" ? "mode-live" : ""}`}>
-                  chain: {chainMode}
-                </span>
-              )}
-              {llm && <span className="mode">agents: {llm}</span>}
+              <span className="mode">agent: {policy?.llm ?? health?.llm}</span>
+              <span className="mode">chain: {health?.chainMode}</span>
             </div>
           )}
+          {status && <span className="status-line">{status}</span>}
         </div>
-
         {error && <div className="error-banner">⚠ {error}</div>}
-        {chainMode === "simulation" && (
-          <div className="note">
-            Simulation mode — the full flow runs with realistic (sim) tx hashes so the demo never
-            depends on a faucet. Set <code>CHAIN_MODE=live</code> to move real MNT on Mantle Sepolia.
-          </div>
-        )}
       </header>
 
-      <main className="grid">
-        <AgentIdentity identity={identity} reputation={reputation} />
-        <TaskPanel title={title} description={description} bounty={bounty} status={status} />
-        <AgentStream log={log} running={running} />
-        <ChainProof txs={txs} payment={payment} reputationUpdated={reputationUpdated} />
+      <main className="guard-grid">
+        {/* LEFT: policy + ledger */}
+        <div className="col">
+          <section className="card">
+            <div className="card-title">
+              <span>Agent &amp; derived policy</span>
+              {policy && <span className={`badge ${policy.derivedBy === "perseus" ? "badge-mantle" : "badge-amber"}`}>{policy.derivedBy === "perseus" ? "Perseus" : "built-in"} engine</span>}
+            </div>
+            <div className="identity-id">{policy?.agent ?? "—"}</div>
+            <div className="identity-wallet muted">
+              {policy ? `${policy.sourceRepo} · ${policy.filesScanned} files · budget $${policy.budgetUsd}` : "policy derived from the agent's source"}
+            </div>
+            <div className="tool-list">
+              {(policy?.tools ?? []).map((t) => (
+                <div key={t.tool} className="tool-row">
+                  <span className={`sev sev-${t.sensitivity}`}>{t.sensitivity}</span>
+                  <span className="tool-name">{t.tool}</span>
+                </div>
+              ))}
+              {!policy && <div className="muted">Run the demo to derive the policy.</div>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-title">
+              <span>Tamper-proof ledger</span>
+              {summary && <span className={`badge ${summary.integrity ? "badge-green" : "badge-live"}`}>{summary.integrity ? "integrity ✓" : "broken"}</span>}
+            </div>
+            <div className="ledger">
+              {decisions.length === 0 && <div className="muted">Each verdict is hash-chained to the last.</div>}
+              {decisions.map((d) => (
+                <div key={d.seq} className="ledger-row">
+                  <span className="muted">#{d.seq}</span>
+                  <span className={d.verdict === "allow" ? "ok" : "bad"}>{d.verdict === "allow" ? "✓" : "✗"}</span>
+                  <span className="hashmono">{short(d.hash)}</span>
+                </div>
+              ))}
+            </div>
+            {anchor && (
+              <div className="anchor">
+                <div className="payment-dot" />
+                <div>
+                  <div className="anchor-title">Anchored on-chain {anchor.simulated && <span className="tx-sim">sim</span>}</div>
+                  <a className="hashmono" href={anchor.explorerUrl} target="_blank" rel="noreferrer">{short(anchor.txHash)}</a>
+                  <div className="muted anchor-root">root {short(anchor.rootHash)} · {anchor.entries} entries · immutable</div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* RIGHT: live enforcement (the star) */}
+        <section className="card enforce">
+          <div className="card-title">
+            <span>Live enforcement</span>
+            {running && <span className="badge badge-live">● live</span>}
+          </div>
+
+          {task && (
+            <div className="ticket">
+              <div className="ticket-task">Task: {task.task}</div>
+              <div className="ticket-warn">⚠ poisoned input (prompt injection):</div>
+              <pre className="ticket-body">{task.ticket}</pre>
+            </div>
+          )}
+
+          <div className="dec-feed">
+            {decisions.length === 0 && !task && (
+              <div className="muted dec-empty">Press <b>Run live attack</b> — watch a hijacked agent try to exfiltrate secrets, wire $5,000, and run shell, and get stopped in real time.</div>
+            )}
+            {decisions.map((d) => (
+              <div key={d.seq} className={`dec ${d.verdict === "allow" ? "dec-allow" : "dec-block"}`}>
+                <div className="dec-head">
+                  <span className="dec-verdict">{d.verdict === "allow" ? "ALLOW" : "BLOCK"}</span>
+                  <span className="dec-tool">{d.tool}({Object.values(d.args ?? {}).map(String).join(", ").slice(0, 60)})</span>
+                  {d.estCostUsd > 0 && <span className="dec-cost">${d.estCostUsd.toLocaleString()}</span>}
+                </div>
+                <div className="dec-reason">{d.reason}</div>
+                <div className="dec-rationale muted">agent said: “{d.rationale}”</div>
+              </div>
+            ))}
+            <div ref={feedRef} />
+          </div>
+
+          {summary && (
+            <div className="summary">
+              <div><b className="bad">{summary.blocked}</b> blocked</div>
+              <div><b className="ok">{summary.allowed}</b> allowed</div>
+              <div><b className="bad">${summary.blockedSpendUsd.toLocaleString()}</b> spend stopped</div>
+            </div>
+          )}
+        </section>
       </main>
 
       <footer className="foot muted">
-        AgentWork · the settlement &amp; reputation layer for the agent economy · built on Mantle,
-        AWS &amp; Replit
+        AgentGuard · in-path enforcement + non-repudiable audit for autonomous agents · AWS Bedrock · Perseus · Replit
       </footer>
     </div>
   );
