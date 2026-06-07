@@ -65,22 +65,22 @@ export default function App() {
             <div className="logo">🛡</div>
             <div>
               <h1>AgentGuard</h1>
-              <p className="tagline">The firewall &amp; black box for AI agents</p>
+              <p className="tagline">The firewall &amp; flight recorder for AI agents</p>
             </div>
           </div>
           <div className="sponsors">
-            <span className="pill">AWS Bedrock</span>
-            <span className="pill">Perseus</span>
-            <span className="pill">Replit</span>
+            <span className="pill pill-live">live</span>
+            <span className="pill">Claude</span>
+            <span className="pill">On-chain audit</span>
           </div>
         </div>
 
         <p className="pitch">
           Companies are deploying autonomous agents that can spend money, run code, and touch
-          production — and <b>88% have already hit an agent incident</b>. AgentGuard derives a
-          least-privilege policy from the agent's <b>own code</b> (via Perseus), <b>blocks unsafe tool
-          calls in the request path</b>, and writes a <b>tamper-proof, on-chain-anchored</b> audit
-          trail — the one record even you can't rewrite.
+          production, and <b>88% have already hit an agent incident</b>. AgentGuard reads the agent's
+          <b> own code</b> to derive a least-privilege policy, <b>blocks unsafe tool calls in the
+          request path</b> before they run, and writes a <b>tamper-proof, on-chain-anchored</b> audit
+          trail that cannot be quietly rewritten.
         </p>
 
         <div className="controls">
@@ -184,16 +184,16 @@ export default function App() {
 
           {summary && (
             <div className="summary">
-              <div><b className="bad">{summary.blocked}</b> blocked</div>
-              <div><b className="ok">{summary.allowed}</b> allowed</div>
-              <div><b className="bad">${summary.blockedSpendUsd.toLocaleString()}</b> spend stopped</div>
+              <div className="metric"><b className="bad">{summary.blocked}</b><span>blocked</span></div>
+              <div className="metric"><b className="ok">{summary.allowed}</b><span>allowed</span></div>
+              <div className="metric"><b className="bad">${summary.blockedSpendUsd.toLocaleString()}</b><span>spend stopped</span></div>
             </div>
           )}
         </section>
       </main>
 
       <footer className="foot muted">
-        AgentGuard · in-path enforcement + non-repudiable audit for autonomous agents · AWS Bedrock · Perseus · Replit
+        AgentGuard · in-path enforcement + non-repudiable audit for autonomous agents
       </footer>
     </div>
   );

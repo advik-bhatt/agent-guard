@@ -1,4 +1,4 @@
-# AgentGuard — the firewall & black box for AI agents
+# AgentGuard — the firewall & flight recorder for AI agents
 
 Companies are deploying autonomous agents that can **spend money, run code, and touch
 production**. In 2026, **88% of enterprises have already hit an agent security
@@ -11,9 +11,8 @@ agent-audit obligations hit enforcement **Aug 2, 2026**.
    live code-context engine) — safe read tools vs. money/secret/destructive tools.
 2. **Enforces every tool call inline** — it *blocks* unsafe actions before they run
    (exfiltrate secrets, wire money over budget, `exec_shell`), not after the fact.
-3. **Writes a hash-chained, on-chain-anchored audit trail** — a black box even *you*
-   can't rewrite (non-repudiation is the one thing a SaaS dashboard structurally
-   can't give).
+3. **Writes a hash-chained, on-chain-anchored audit trail** that even *you* cannot
+   rewrite (non-repudiation is the one thing a SaaS dashboard structurally can't give).
 
 > Not another observability dashboard (trusted, after-the-fact). AgentGuard is
 > in-path enforcement + a trustless, third-party-verifiable record.
@@ -47,20 +46,20 @@ works offline. Add keys (below) to make it fully live.
 
 Copy `.env.example` → `.env` and fill in what you want:
 
-| Sponsor | How it's used | Turn it on |
+| Capability | What it does | Turn it on |
 |---|---|---|
-| **AWS Bedrock** | runs the governed agent | `BEDROCK_ENABLED=true` + `AWS_*` creds (model `us.anthropic.claude-sonnet-4-6`) |
-| **Perseus** | derives the policy from the agent's codebase | `pip install perseus-ctx` then `PERSEUS_ENABLED=true` |
-| **Replit** | one-click deploy + public URL | import repo → set Secrets → Deploy (`.replit` included) |
-| on-chain anchor | non-repudiable audit root | `CHAIN_MODE=live` + `ANCHOR_PRIVATE_KEY` (any EVM testnet) |
+| **Claude agent** | runs the governed agent | `ANTHROPIC_API_KEY` (or AWS Bedrock via `BEDROCK_ENABLED=true` + `AWS_*`). With no key it runs a built-in compromised-agent scenario, which keeps the block demo deterministic. |
+| **Perseus** | derives the policy from the agent's code (`perseus render`) | `pip install perseus-ctx` + `PERSEUS_ENABLED=true`. Falls back to the built-in scanner where Perseus isn't installed (e.g. hosted Node deploys). |
+| **On-chain anchor** | non-repudiable audit root | `CHAIN_MODE=live` + `ANCHOR_PRIVATE_KEY` (any EVM testnet); simulated otherwise. |
 
 Anthropic API works as a drop-in agent runtime if Bedrock isn't ready: set
 `ANTHROPIC_API_KEY`.
 
-### Deploy on Replit
-Import this repo, add your keys as **Secrets**, set `VITE_BACKEND_URL=` (empty, for
-same-origin), then **Deploy** (Autoscale). Build runs `npm run build`; the Express
-server serves the built frontend and the API on one port.
+### Deploy (any Node host)
+Build `npm run build`, start `npm start`. The Express server serves the built
+frontend and the API on one port and binds `0.0.0.0:$PORT`, so it runs on Render,
+Railway, Fly, a plain VM, or a tunnel to localhost. The production build uses
+same-origin API calls, so no extra config is needed.
 
 ## Architecture
 
@@ -89,4 +88,4 @@ fixtures/support-agent/  the example agent whose code the policy is derived from
   2026 thesis: the agent explosion is bottlenecked by *safe, reliable* infra; EU AI
   Act Art. 12 enforcement lands Aug 2, 2026.
 
-Built for the NYTW Intern Hackathon — Best Overall + Best Use of Perseus.
+Built for the NYTW Intern Hackathon: Best Overall and Best Use of Perseus.
