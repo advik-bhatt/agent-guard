@@ -6,12 +6,12 @@
   --border: #262636;
   --text: #f4f5fb;
   --muted: #8b8ca3;
-  --accent: #6366f1;
-  --accent-2: #22d3a6;
-  --green: #2ee6a0;
-  --red: #ff5d6c;
+  --accent: #5af0c8;
+  --accent-2: #37e39b;
+  --green: #37e39b;
+  --red: #ff5470;
   --amber: #f5b94a;
-  --mantle: #3fd9c9;
+  --mantle: #5af0c8;
 }
 
 * { box-sizing: border-box; }
@@ -19,11 +19,10 @@
 body {
   margin: 0;
   background:
-    radial-gradient(900px 500px at 80% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
-    radial-gradient(800px 500px at 0% 0%, rgba(34, 211, 166, 0.1), transparent 55%),
+    radial-gradient(1100px 600px at 50% -25%, rgba(90, 240, 200, 0.07), transparent 60%),
     var(--bg);
   color: var(--text);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Space Grotesk", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
