@@ -63,27 +63,34 @@ contract AgentReputationRegistry is IReputationRegistry {
         address[] calldata clientAddresses,
         string calldata tag1,
         string calldata tag2
-    ) external view returns (uint64 count, int128 summaryValue, uint8 summaryDecimals) {
+    ) external view returns (uint64, int128, uint8) {
         Feedback[] storage list = _feedback[agentId];
-        int256 sum;
-        uint256 n;
         bytes32 t1 = keccak256(bytes(tag1));
         bytes32 t2 = keccak256(bytes(tag2));
-        bytes32 empty = keccak256(bytes(""));
+        int256 sum;
+        uint256 n;
 
         for (uint256 i; i < list.length; i++) {
-            Feedback storage f = list[i];
-            if (clientAddresses.length > 0 && !_contains(clientAddresses, f.client)) continue;
-            if (t1 != empty && keccak256(bytes(f.tag1)) != t1) continue;
-            if (t2 != empty && keccak256(bytes(f.tag2)) != t2) continue;
-            sum += int256(f.value);
+            if (!_included(list[i], clientAddresses, t1, t2)) continue;
+            sum += int256(list[i].value);
             n++;
         }
 
         if (n == 0) return (0, 0, 0);
-        count = uint64(n);
-        summaryValue = int128(sum / int256(n));
-        summaryDecimals = 0;
+        return (uint64(n), int128(sum / int256(n)), 0);
+    }
+
+    function _included(
+        Feedback storage f,
+        address[] calldata clients,
+        bytes32 t1,
+        bytes32 t2
+    ) private view returns (bool) {
+        bytes32 empty = keccak256(bytes(""));
+        if (clients.length > 0 && !_contains(clients, f.client)) return false;
+        if (t1 != empty && keccak256(bytes(f.tag1)) != t1) return false;
+        if (t2 != empty && keccak256(bytes(f.tag2)) != t2) return false;
+        return true;
     }
 
     /// @notice Total feedback entries recorded for an agent (unfiltered).

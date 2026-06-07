@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/util.ts","./src/components/AgentIdentity.tsx","./src/components/AgentStream.tsx","./src/components/ChainProof.tsx","./src/components/TaskPanel.tsx"],"errors":true,"version":"5.9.3"}
